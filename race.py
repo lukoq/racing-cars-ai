@@ -97,8 +97,12 @@ class AbstractCar:
         car_mask = pygame.mask.from_surface(self.img)
         offset = (int(self.x - x), int(self.y - y))
         poi = mask.overlap(car_mask, offset)
-
         return poi
+
+    def get_img_pos(self):
+        offset = (13, 24)
+        img_x, img_y = self.x + offset[0], self.y + offset[1]
+        return img_x, img_y
 
     def reset(self):
         self.x, self.y = self.START_POS
@@ -117,6 +121,44 @@ class PlayerCar(AbstractCar):
     def bounce(self):
         self.vel = -self.vel
         self.move()
+
+    def get_angle(self):
+        return math.radians(self.angle)
+
+    def point_to_mask_distance(self, mask, direction, max_distance=1000):
+        if direction == 'FORWARD':
+            angle_rad = self.get_angle() + 90 / 2 * math.pi
+        elif direction == 'RIGHT':
+            angle_rad = self.get_angle() + 45 / 2 * math.pi
+        elif direction == 'LEFT':
+            angle_rad = self.get_angle()
+        elif direction == 'LIGHT_LEFT':
+            angle_rad = self.get_angle() + 45 * math.pi / 180
+        elif direction == 'LIGHT_RIGHT':
+            angle_rad = self.get_angle() + 135 * math.pi / 180
+        else:
+            angle_rad = self.get_angle()
+        direction_x = math.cos(-angle_rad)
+        direction_y = math.sin(-angle_rad)
+
+        # Step size for moving along the ray
+        step_size = 1
+
+        x, y = self.get_img_pos()
+
+        # Iterate through the ray to find the first collision point
+        for distance in range(0, max_distance, step_size):
+            # Move the point along the ray
+            check_x = int(x + direction_x * distance)
+            check_y = int(y + direction_y * distance)
+
+            # Check if the point is within the mask and collides with it
+            if 0 <= check_x < mask.get_size()[0] and 0 <= check_y < mask.get_size()[1]:
+                if mask.get_at((check_x, check_y)):
+                    # We found a collision, return the distance and the collision point
+                    return distance, (check_x, check_y)
+
+        return max_distance, (int(x + direction_x * max_distance), int(y + direction_y * max_distance))
 
 
 class ComputerCar(AbstractCar):
@@ -241,7 +283,7 @@ def handle_collision(player_car, computer_car, game_info):
 
     player_finish_poi_collide = player_car.collide(
         FINISH_MASK, *FINISH_POSITION)
-    if player_finish_poi_collide != None:
+    if player_finish_poi_collide is not None:
         if player_finish_poi_collide[1] == 0:
             player_car.bounce()
         else:
@@ -282,6 +324,15 @@ while run:
 
     move_player(player_car)
     computer_car.move()
+
+    for direction in ('FORWARD', 'LEFT', 'RIGHT', 'LIGHT_LEFT', 'LIGHT_RIGHT'):
+        distance_to_border, collision_point = player_car.point_to_mask_distance(TRACK_BORDER_MASK, direction)
+        pygame.draw.line(WIN, (255, 0, 0), player_car.get_img_pos(), collision_point, 2)
+        pygame.draw.circle(WIN, (0, 0, 255), collision_point, 3)
+
+    pygame.draw.circle(WIN, (0, 255, 0), player_car.get_img_pos(), 3)  # Green point as the start
+
+    pygame.display.flip()
 
     handle_collision(player_car, computer_car, game_info)
 
