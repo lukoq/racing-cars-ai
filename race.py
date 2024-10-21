@@ -1,7 +1,9 @@
+import numpy as np
 import pygame
 import time
 import math
 from utils import *
+import neat
 
 pygame.font.init()
 
@@ -19,6 +21,7 @@ RED_CAR = scale_image(pygame.image.load("imgs/red-car.png"), 0.6)
 GREEN_CAR = scale_image(pygame.image.load("imgs/green-car.png"), 0.6)
 
 WIDTH, HEIGHT = 1100, 600
+X_CENTER, Y_CENTER = WIDTH / 2, HEIGHT / 2
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Racing Game!")
 
@@ -26,36 +29,6 @@ MAIN_FONT = pygame.font.SysFont("comicsans", 44)
 
 FPS = 60
 PATH = []
-
-
-class GameInfo:
-    LEVELS = 10
-
-    def __init__(self, level=1):
-        self.level = level
-        self.started = False
-        self.level_start_time = 0
-
-    def next_level(self):
-        self.level += 1
-        self.started = False
-
-    def reset(self):
-        self.level = 1
-        self.started = False
-        self.level_start_time = 0
-
-    def game_finished(self):
-        return self.level > self.LEVELS
-
-    def start_level(self):
-        self.started = True
-        self.level_start_time = time.time()
-
-    def get_level_time(self):
-        if not self.started:
-            return 0
-        return round(time.time() - self.level_start_time)
 
 
 class AbstractCar:
@@ -67,6 +40,7 @@ class AbstractCar:
         self.angle = 0
         self.x, self.y = self.START_POS
         self.acceleration = 0.1
+        self.crashed = False
 
     def rotate(self, left=False, right=False):
         if left:
@@ -121,6 +95,7 @@ class PlayerCar(AbstractCar):
     def bounce(self):
         self.vel = -self.vel
         self.move()
+        self.crashed = True
 
     def get_angle(self):
         return math.radians(self.angle)
@@ -161,186 +136,128 @@ class PlayerCar(AbstractCar):
         return max_distance, (int(x + direction_x * max_distance), int(y + direction_y * max_distance))
 
 
-class ComputerCar(AbstractCar):
-    IMG = GREEN_CAR
-    START_POS = (150, 200)
-
-    def __init__(self, max_vel, rotation_vel, path=[]):
-        super().__init__(max_vel, rotation_vel)
-        self.path = path
-        self.current_point = 0
-        self.vel = max_vel
-
-    def draw_points(self, win):
-        for point in self.path:
-            pygame.draw.circle(win, (255, 0, 0), point, 5)
-
-    def draw(self, win):
-        super().draw(win)
-        # self.draw_points(win)
-
-    def calculate_angle(self):
-        target_x, target_y = self.path[self.current_point]
-        x_diff = target_x - self.x
-        y_diff = target_y - self.y
-
-        if y_diff == 0:
-            desired_radian_angle = math.pi / 2
-        else:
-            desired_radian_angle = math.atan(x_diff / y_diff)
-
-        if target_y > self.y:
-            desired_radian_angle += math.pi
-
-        difference_in_angle = self.angle - math.degrees(desired_radian_angle)
-        if difference_in_angle >= 180:
-            difference_in_angle -= 360
-
-        if difference_in_angle > 0:
-            self.angle -= min(self.rotation_vel, abs(difference_in_angle))
-        else:
-            self.angle += min(self.rotation_vel, abs(difference_in_angle))
-
-    def update_path_point(self):
-        target = self.path[self.current_point]
-        rect = pygame.Rect(
-            self.x, self.y, self.img.get_width(), self.img.get_height())
-        if rect.collidepoint(*target):
-            self.current_point += 1
-
-    def move(self):
-        if self.current_point >= len(self.path):
-            return
-
-        self.calculate_angle()
-        self.update_path_point()
-        super().move()
-
-    def next_level(self, level):
-        self.reset()
-        self.vel = self.max_vel + (level - 1) * 0.2
-        self.current_point = 0
-
-
-def draw(win, images, tile, player_car, computer_car, game_info):
+def draw(win, track, tile, finish):
     for x in range(0, WIDTH, 32):
         for y in range(0, HEIGHT, 32):
             win.blit(tile, (x, y))
 
-    for img, pos in images:
-        win.blit(img, pos)
+    win.blit(track, (0, 0))
+    win.blit(finish, FINISH_POSITION)
 
-    level_text = MAIN_FONT.render(
-        f"Level {game_info.level}", 1, (255, 255, 255))
-    win.blit(level_text, (10, HEIGHT - level_text.get_height() - 70))
-
-    time_text = MAIN_FONT.render(
-        f"Time: {game_info.get_level_time()}s", 1, (255, 255, 255))
-    win.blit(time_text, (10, HEIGHT - time_text.get_height() - 40))
-
-    vel_text = MAIN_FONT.render(
-        f"Vel: {round(player_car.vel, 1)}px/s", 1, (255, 255, 255))
-    win.blit(vel_text, (10, HEIGHT - vel_text.get_height() - 10))
-
-    player_car.draw(win)
-    computer_car.draw(win)
     pygame.display.update()
 
 
-def move_player(player_car):
-    keys = pygame.key.get_pressed()
+def move_player(player_car, action_index):
+    # 0 - Move forward
+    # 1 - Steer left
+    # 2 - Steer right
+    # 3 - Move backward (optional)
+
     moved = False
 
-    if keys[pygame.K_a]:
-        player_car.rotate(left=True)
-    if keys[pygame.K_d]:
-        player_car.rotate(right=True)
-    if keys[pygame.K_w]:
+    if action_index == 0:  # Accelerate / Move forward
         moved = True
         player_car.move_forward()
-    if keys[pygame.K_s]:
+    elif action_index == 1:  # Steer left
+        player_car.rotate(left=True)
+    elif action_index == 2:  # Steer right
+        player_car.rotate(right=True)
+    elif action_index == 3:  # Move backward (if applicable)
         moved = True
         player_car.move_backward()
 
+    # If no movement (i.e., action did not move forward or backward), reduce speed
     if not moved:
         player_car.reduce_speed()
 
 
-def handle_collision(player_car, computer_car, game_info):
+def handle_collision(player_car):
     if player_car.collide(TRACK_BORDER_MASK) is not None:
         player_car.bounce()
 
-    computer_finish_poi_collide = computer_car.collide(
-        FINISH_MASK, *FINISH_POSITION)
 
-    if computer_finish_poi_collide is not None:
-        blit_text_center(WIN, MAIN_FONT, "You lost!")
-        pygame.display.update()
-        pygame.time.wait(5000)
-        game_info.reset()
-        player_car.reset()
-        computer_car.reset()
-
-    player_finish_poi_collide = player_car.collide(
-        FINISH_MASK, *FINISH_POSITION)
-    if player_finish_poi_collide is not None:
-        if player_finish_poi_collide[1] == 0:
-            player_car.bounce()
-        else:
-            game_info.next_level()
-            player_car.reset()
-            computer_car.next_level(game_info.level)
-
-
-run = True
-clock = pygame.time.Clock()
-images = [(TRACK, (0, 0)),
-          (FINISH, FINISH_POSITION)]
-player_car = PlayerCar(4, 4)
-computer_car = ComputerCar(2, 4, PATH)
-game_info = GameInfo()
-
-while run:
-    clock.tick(FPS)
-
-    draw(WIN, images, TILE, player_car, computer_car, game_info)
-
-    while not game_info.started:
-        blit_text_center(
-            WIN, MAIN_FONT, f"Press any key to start level {game_info.level}!")
-        pygame.display.update()
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                break
-
-            if event.type == pygame.KEYDOWN:
-                game_info.start_level()
-
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            run = False
-            break
-
-    move_player(player_car)
-    computer_car.move()
-
+def get_car_input(car):
+    car_input = []
     for direction in ('FORWARD', 'LEFT', 'RIGHT', 'LIGHT_LEFT', 'LIGHT_RIGHT'):
-        distance_to_border, collision_point = player_car.point_to_mask_distance(TRACK_BORDER_MASK, direction)
-        pygame.draw.line(WIN, (255, 0, 0), player_car.get_img_pos(), collision_point, 2)
+        distance_to_border, collision_point = car.point_to_mask_distance(TRACK_BORDER_MASK, direction)
+        car_input.append(distance_to_border)
+    return np.array(car_input) / 1000  # Normalize the inputs
+
+
+def draw_input(car):
+    for direction in ('FORWARD', 'LEFT', 'RIGHT', 'LIGHT_LEFT', 'LIGHT_RIGHT'):
+        distance_to_border, collision_point = car.point_to_mask_distance(TRACK_BORDER_MASK, direction)
+        pygame.draw.line(WIN, (255, 0, 0), car.get_img_pos(), collision_point, 2)
         pygame.draw.circle(WIN, (0, 0, 255), collision_point, 3)
-
-    pygame.draw.circle(WIN, (0, 255, 0), player_car.get_img_pos(), 3)  # Green point as the start
-
+    pygame.draw.circle(WIN, (0, 255, 0), car.get_img_pos(), 3)
     pygame.display.flip()
 
-    handle_collision(player_car, computer_car, game_info)
 
-    if game_info.game_finished():
-        blit_text_center(WIN, MAIN_FONT, "You won the game!")
-        pygame.time.wait(5000)
-        game_info.reset()
-        player_car.reset()
-        computer_car.reset()
+def compute_fitness(car):
+    f_min = -math.pi
+    f_max = math.pi
+    position = car.get_img_pos()
+    theta = math.atan2(position[1] - Y_CENTER, position[0] - X_CENTER)
+    return (theta - f_min) / (f_max - f_min)  # Normalize
 
-pygame.quit()
+
+def eval_genomes(genomes, config):
+    # Initialize game variables, create multiple cars, and set up NEAT population
+    cars = []
+    for _, genome in genomes:
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        cars.append({'network': net, 'car': PlayerCar(4, 4), 'fitness': 0})
+
+    clock = pygame.time.Clock()
+    run = True
+    while run:
+        clock.tick(FPS)
+
+        draw(WIN, TRACK, TILE, FINISH)  # draw a surface
+
+        # Update and draw each car controlled by its network
+        for car_info in cars:
+            car = car_info['car']
+            net = car_info['network']
+
+            # Get car sensor input (e.g., distances to borders)
+            car_input = get_car_input(car)  # Get sensor distances like before
+
+            output = net.activate(car_input)
+            action_index = np.argmax(output)
+
+            move_player(car, action_index)
+            handle_collision(car)
+
+            # Update fitness (e.g., based on distance traveled)
+            car_info['fitness'] += compute_fitness(car)
+            car.draw(WIN)
+            pygame.display.update()
+
+
+    for i, (genome_id, genome) in enumerate(genomes):
+        genome.fitness = cars[i]['fitness']
+
+
+def run_neat(config_path):
+    # Correct the typo by using 'neat.Config' with a capital 'C'
+    config = neat.Config(
+        neat.DefaultGenome,
+        neat.DefaultReproduction,
+        neat.DefaultSpeciesSet,
+        neat.DefaultStagnation,
+        config_path
+    )
+
+    population = neat.Population(config)
+    population.add_reporter(neat.StdOutReporter(True))
+    stats = neat.StatisticsReporter()
+    population.add_reporter(stats)
+
+    # Start the NEAT evolution process
+    winner = population.run(eval_genomes, 100)  # Run for up to 100 generations
+
+
+if __name__ == "__main__":
+    config_path = "config-feedforward"
+    run_neat(config_path)
