@@ -22,12 +22,12 @@ GREEN_CAR = scale_image(pygame.image.load("imgs/green-car.png"), 0.6)
 
 WIDTH, HEIGHT = 1100, 600
 X_CENTER, Y_CENTER = WIDTH / 2, HEIGHT / 2
-WIN = pygame.display.set_mode((WIDTH, HEIGHT))
+WIN = pygame.display.set_mode((WIDTH, HEIGHT), pygame.DOUBLEBUF)
 pygame.display.set_caption("Racing Game!")
 
 MAIN_FONT = pygame.font.SysFont("comicsans", 44)
 
-FPS = 60
+FPS = 30
 PATH = []
 
 
@@ -39,6 +39,7 @@ class AbstractCar:
         self.rotation_vel = rotation_vel
         self.angle = 0
         self.x, self.y = self.START_POS
+        self.x, self.y = self.START_POS
         self.acceleration = 0.1
         self.crashed = False
 
@@ -49,7 +50,11 @@ class AbstractCar:
             self.angle -= self.rotation_vel
 
     def draw(self, win):
-        blit_rotate_center(win, self.img, (self.x, self.y), self.angle)
+        rotated_image = pygame.transform.rotate(self.img, self.angle)
+        # Get the rectangle of the rotated image and set its center
+        new_rect = rotated_image.get_rect(center=self.img.get_rect(topleft=(self.x, self.y)).center)
+        # Draw the rotated image onto the window
+        win.blit(rotated_image, new_rect.topleft)
 
     def move_forward(self):
         self.vel = min(self.vel + self.acceleration, self.max_vel)
@@ -172,8 +177,10 @@ def move_player(player_car, action_index):
 
 
 def handle_collision(player_car):
-    if player_car.collide(TRACK_BORDER_MASK) is not None:
-        player_car.bounce()
+    return player_car.collide(TRACK_BORDER_MASK) is not None
+
+def handle_progress(player_car):
+    print(player_car.get_img_pos())
 
 
 def get_car_input(car):
@@ -202,41 +209,58 @@ def compute_fitness(car):
 
 
 def eval_genomes(genomes, config):
-    # Initialize game variables, create multiple cars, and set up NEAT population
+
     cars = []
     for _, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)
-        cars.append({'network': net, 'car': PlayerCar(4, 4), 'fitness': 0})
+        cars.append({'network': net, 'car': PlayerCar(4, 4), 'fitness': 0, 'alive': True})
 
     clock = pygame.time.Clock()
     run = True
+
     while run:
+        WIN.fill((0, 0, 0))
         clock.tick(FPS)
+        draw(WIN, TRACK, TILE, FINISH)  # Draw background and track
 
-        draw(WIN, TRACK, TILE, FINISH)  # draw a surface
-
-        # Update and draw each car controlled by its network
+        all_crashed = True
         for car_info in cars:
             car = car_info['car']
             net = car_info['network']
 
-            # Get car sensor input (e.g., distances to borders)
-            car_input = get_car_input(car)  # Get sensor distances like before
+            if car_info['alive']:
+                car_input = get_car_input(car)
+                output = net.activate(car_input)
+                action_index = np.argmax(output)
+                move_player(car, action_index)
+                car_info['fitness'] += compute_fitness(car)
+                print(f"Car fitness: {car_info['fitness']}")
 
-            output = net.activate(car_input)
-            action_index = np.argmax(output)
+            if handle_collision(car):
+                car_info['alive'] = False
+            else:
+                all_crashed = False
 
-            move_player(car, action_index)
-            handle_collision(car)
-
-            # Update fitness (e.g., based on distance traveled)
-            car_info['fitness'] += compute_fitness(car)
             car.draw(WIN)
-            pygame.display.update()
 
+        pygame.display.update()
 
+        # Check for end of generation if all cars have crashed
+        if all_crashed:
+            run = False
+
+        # Event handling
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_n:  # Press 'n' for new generation
+                    run = False
+
+    # Assign fitness to each genome after the generation ends
     for i, (genome_id, genome) in enumerate(genomes):
         genome.fitness = cars[i]['fitness']
+
 
 
 def run_neat(config_path):
