@@ -200,7 +200,7 @@ def draw_input(car):
     pygame.display.flip()
 
 
-def compute_fitness(car):
+def compute_progress(car):
     f_min = -math.pi
     f_max = math.pi
     position = car.get_img_pos()
@@ -213,7 +213,9 @@ def eval_genomes(genomes, config):
     cars = []
     for _, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)
-        cars.append({'network': net, 'car': PlayerCar(4, 4), 'fitness': 0, 'alive': True})
+        car = PlayerCar(4, 4)
+        progress = compute_progress(car)
+        cars.append({'network': net, 'car': car, 'fitness': 0, 'alive': True, 'last_progress': progress})
 
     clock = pygame.time.Clock()
     run = True
@@ -233,13 +235,21 @@ def eval_genomes(genomes, config):
                 output = net.activate(car_input)
                 action_index = np.argmax(output)
                 move_player(car, action_index)
-                car_info['fitness'] += compute_fitness(car)
-                print(f"Car fitness: {car_info['fitness']}")
 
-            if handle_collision(car):
-                car_info['alive'] = False
-            else:
-                all_crashed = False
+                if handle_collision(car):
+                    car_info['alive'] = False
+                else:
+                    all_crashed = False
+
+                # Calculate progress-based fitness
+                current_progress = compute_progress(car)
+                if current_progress > car_info['last_progress']:  # Forward progress
+                    car_info['fitness'] += current_progress - car_info['last_progress']
+                elif current_progress < car_info['last_progress']:  # Backward movement
+                    car_info['fitness'] -= (car_info['last_progress'] - current_progress) * 0.5
+
+                # Update last progress for the next frame
+                car_info['last_progress'] = current_progress
 
             car.draw(WIN)
 

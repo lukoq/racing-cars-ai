@@ -1,7 +1,7 @@
 [NEAT]
 fitness_criterion     = max
 fitness_threshold     = 3.98
-pop_size              = 10
+pop_size              = 50
 reset_on_extinction   = 0
 
 [DefaultGenome]
@@ -19,8 +19,7 @@ node_delete_prob        = 0.2
 activation_default      = sigmoid
 activation_mutate_rate  = 0.1
 activation_options      = sigmoid
-aggregation_default     = sum
-aggregation_options     = sum my_l2norm_function
+aggregation = sum
 aggregation_mutate_rate = 0.1
 bias_init_mean          = 0.0
 bias_init_stdev         = 1.0
