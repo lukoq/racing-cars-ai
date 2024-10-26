@@ -179,8 +179,10 @@ def move_player(player_car, action_index):
 def handle_collision(player_car):
     return player_car.collide(TRACK_BORDER_MASK) is not None
 
-def handle_progress(player_car):
-    print(player_car.get_img_pos())
+
+def handle_finish_line_collision(player_car):
+    collision_point = player_car.collide(FINISH_MASK, *FINISH_POSITION)
+    return collision_point is not None
 
 
 def get_car_input(car):
@@ -209,7 +211,6 @@ def compute_progress(car):
 
 
 def eval_genomes(genomes, config):
-
     cars = []
     for _, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)
@@ -222,7 +223,6 @@ def eval_genomes(genomes, config):
 
     while run:
         WIN.fill((0, 0, 0))
-        clock.tick(FPS)
         draw(WIN, TRACK, TILE, FINISH)  # Draw background and track
 
         all_crashed = True
@@ -236,24 +236,22 @@ def eval_genomes(genomes, config):
                 action_index = np.argmax(output)
                 move_player(car, action_index)
 
-                if handle_collision(car):
+                if handle_collision(car) or handle_finish_line_collision(car):
                     car_info['alive'] = False
                 else:
                     all_crashed = False
 
-                # Calculate progress-based fitness
                 current_progress = compute_progress(car)
-                if current_progress > car_info['last_progress']:  # Forward progress
-                    car_info['fitness'] += current_progress - car_info['last_progress']
-                elif current_progress < car_info['last_progress']:  # Backward movement
+                if current_progress > car_info['last_progress']:  # forward
+                    car_info['fitness'] += (current_progress - car_info['last_progress'])
+                elif current_progress == car_info['last_progress']:  # stand
+                    car_info['fitness'] -= car_info['last_progress'] * 0.5  # punishment for no move
+                elif current_progress < car_info['last_progress']:  # backward
                     car_info['fitness'] -= (car_info['last_progress'] - current_progress) * 0.5
 
-                # Update last progress for the next frame
                 car_info['last_progress'] = current_progress
 
             car.draw(WIN)
-
-        pygame.display.update()
 
         # Check for end of generation if all cars have crashed
         if all_crashed:
@@ -267,10 +265,12 @@ def eval_genomes(genomes, config):
                 if event.key == pygame.K_n:  # Press 'n' for new generation
                     run = False
 
+        pygame.display.update()
+        clock.tick(FPS)
+
     # Assign fitness to each genome after the generation ends
     for i, (genome_id, genome) in enumerate(genomes):
         genome.fitness = cars[i]['fitness']
-
 
 
 def run_neat(config_path):
