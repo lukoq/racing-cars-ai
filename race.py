@@ -56,6 +56,7 @@ class AbstractCar:
         # Draw the rotated image onto the window
         win.blit(rotated_image, new_rect.topleft)
 
+
     def move_forward(self):
         self.vel = min(self.vel + self.acceleration, self.max_vel)
         self.move()
@@ -149,8 +150,6 @@ def draw(win, track, tile, finish):
     win.blit(track, (0, 0))
     win.blit(finish, FINISH_POSITION)
 
-    pygame.display.update()
-
 
 def move_player(player_car, action_index):
     # 0 - Move forward
@@ -199,7 +198,6 @@ def draw_input(car):
         pygame.draw.line(WIN, (255, 0, 0), car.get_img_pos(), collision_point, 2)
         pygame.draw.circle(WIN, (0, 0, 255), collision_point, 3)
     pygame.draw.circle(WIN, (0, 255, 0), car.get_img_pos(), 3)
-    pygame.display.flip()
 
 
 def compute_progress(car):
@@ -261,9 +259,7 @@ def eval_genomes(genomes, config):
                         car_info['fitness'] *= 0.5
                         car_info['stagnation_counter'] = 0
 
-
                 car_info['last_progress'] = current_progress
-
             car.draw(WIN)
 
         # Check for end of generation if all cars have crashed
