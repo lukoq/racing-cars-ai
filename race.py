@@ -216,7 +216,14 @@ def eval_genomes(genomes, config):
         net = neat.nn.FeedForwardNetwork.create(genome, config)
         car = PlayerCar(4, 4)
         progress = compute_progress(car)
-        cars.append({'network': net, 'car': car, 'fitness': 0, 'alive': True, 'last_progress': progress})
+        cars.append({'network': net,
+                     'car': car,
+                     'fitness': 0,
+                     'alive': True,
+                     'last_progress': progress,
+                     'best_progress': progress,
+                     'stagnation_counter': 0
+                     })
 
     clock = pygame.time.Clock()
     run = True
@@ -243,11 +250,17 @@ def eval_genomes(genomes, config):
 
                 current_progress = compute_progress(car)
                 if current_progress > car_info['last_progress']:  # forward
-                    car_info['fitness'] += (current_progress - car_info['last_progress'])
-                elif current_progress == car_info['last_progress']:  # stand
-                    car_info['fitness'] -= car_info['last_progress'] * 0.5  # punishment for no move
+                    car_info['fitness'] += (current_progress - car_info['last_progress']) * 2
+                    car_info['stagnation_counter'] = 0
+                    car_info['best_progress'] = max(car_info['best_progress'], current_progress)
                 elif current_progress < car_info['last_progress']:  # backward
                     car_info['fitness'] -= (car_info['last_progress'] - current_progress) * 0.5
+                else:
+                    car_info['stagnation_counter'] += 1
+                    if car_info['stagnation_counter'] > 30:
+                        car_info['fitness'] *= 0.5
+                        car_info['stagnation_counter'] = 0
+
 
                 car_info['last_progress'] = current_progress
 
