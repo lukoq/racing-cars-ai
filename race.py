@@ -4,6 +4,8 @@ import time
 import math
 from utils import *
 import neat
+import torch
+
 
 pygame.font.init()
 
@@ -55,7 +57,6 @@ class AbstractCar:
         new_rect = rotated_image.get_rect(center=self.img.get_rect(topleft=(self.x, self.y)).center)
         # Draw the rotated image onto the window
         win.blit(rotated_image, new_rect.topleft)
-
 
     def move_forward(self):
         self.vel = min(self.vel + self.acceleration, self.max_vel)
@@ -209,6 +210,10 @@ def compute_progress(car):
 
 
 def eval_genomes(genomes, config):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # cars handling
+    checkpoints = [0.1, 0.2, 0.4, 0.6, 0.8]
     cars = []
     for _, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)
@@ -219,8 +224,8 @@ def eval_genomes(genomes, config):
                      'fitness': 0,
                      'alive': True,
                      'last_progress': progress,
-                     'best_progress': progress,
-                     'stagnation_counter': 0
+                     'stagnation_counter': 0,
+                     'checkpoints_passed': [],
                      })
 
     clock = pygame.time.Clock()
@@ -236,23 +241,32 @@ def eval_genomes(genomes, config):
             net = car_info['network']
 
             if car_info['alive']:
-                car_input = get_car_input(car)
-                output = net.activate(car_input)
+                car_input = torch.tensor(get_car_input(car), device=device)
+                output = net.activate(car_input.cpu().numpy())
                 action_index = np.argmax(output)
                 move_player(car, action_index)
 
-                if handle_collision(car) or handle_finish_line_collision(car):
+                if handle_collision(car):
+                    car_info['fitness'] -= 1
+                    car_info['fitness'] = max(car_info['fitness'], 0)
+                    car_info['alive'] = False
+                elif handle_finish_line_collision(car):
                     car_info['alive'] = False
                 else:
                     all_crashed = False
 
                 current_progress = compute_progress(car)
                 if current_progress > car_info['last_progress']:  # forward
-                    car_info['fitness'] += (current_progress - car_info['last_progress']) * 2
+                    car_info['fitness'] += (current_progress - car_info['last_progress']) * 5
                     car_info['stagnation_counter'] = 0
-                    car_info['best_progress'] = max(car_info['best_progress'], current_progress)
+                    for checkpoint in checkpoints:
+                        if current_progress >= checkpoint and checkpoint not in car_info['checkpoints_passed']:
+                            car_info['fitness'] += 1  # bonus
+                            car_info['checkpoints_passed'].append(checkpoint)
+
                 elif current_progress < car_info['last_progress']:  # backward
                     car_info['fitness'] -= (car_info['last_progress'] - current_progress) * 0.5
+                    car_info['fitness'] = max(car_info['fitness'], 0)
                 else:
                     car_info['stagnation_counter'] += 1
                     if car_info['stagnation_counter'] > 30:
@@ -262,9 +276,12 @@ def eval_genomes(genomes, config):
                 car_info['last_progress'] = current_progress
             car.draw(WIN)
 
+
         # Check for end of generation if all cars have crashed
         if all_crashed:
             run = False
+
+
 
         # Event handling
         for event in pygame.event.get():
