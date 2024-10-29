@@ -10,14 +10,14 @@ import torch
 pygame.font.init()
 
 TILE = scale_image(pygame.image.load("imgs/Soil_Tile.png"), 0.3)
-TRACK = scale_image(pygame.image.load("imgs/track.png"), 1.0)
+TRACK = scale_image(pygame.image.load("imgs/track2.png"), 1.0)
 
-TRACK_BORDER = scale_image(pygame.image.load("imgs/track-border.png"), 1.0)
+TRACK_BORDER = scale_image(pygame.image.load("imgs/track2-border.png"), 1.0)
 TRACK_BORDER_MASK = pygame.mask.from_surface(TRACK_BORDER)
 
-FINISH = scale_image(pygame.image.load("imgs/start.png"), 0.075)
+FINISH = scale_image(pygame.image.load("imgs/start.png"), 0.1)
 FINISH_MASK = pygame.mask.from_surface(FINISH)
-FINISH_POSITION = (35, 250)
+FINISH_POSITION = (80, 250)
 
 RED_CAR = scale_image(pygame.image.load("imgs/red-car.png"), 0.6)
 GREEN_CAR = scale_image(pygame.image.load("imgs/green-car.png"), 0.6)
