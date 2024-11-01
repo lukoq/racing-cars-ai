@@ -107,6 +107,9 @@ class PlayerCar(AbstractCar):
     def get_angle(self):
         return math.radians(self.angle)
 
+    def get_velocity(self):
+        return self.vel
+
     def point_to_mask_distance(self, mask, direction, max_distance=1000):
         if direction == 'FORWARD':
             angle_rad = self.get_angle() + 90 / 2 * math.pi
@@ -115,9 +118,13 @@ class PlayerCar(AbstractCar):
         elif direction == 'LEFT':
             angle_rad = self.get_angle()
         elif direction == 'LIGHT_LEFT':
-            angle_rad = self.get_angle() + 45 * math.pi / 180
+            angle_rad = self.get_angle() + 60 * math.pi / 180
         elif direction == 'LIGHT_RIGHT':
-            angle_rad = self.get_angle() + 135 * math.pi / 180
+            angle_rad = self.get_angle() + 120 * math.pi / 180
+        elif direction == 'LIGHT_LEFT2':
+            angle_rad = self.get_angle() + 30 * math.pi / 180
+        elif direction == 'LIGHT_RIGHT2':
+            angle_rad = self.get_angle() + 150 * math.pi / 180
         else:
             angle_rad = self.get_angle()
         direction_x = math.cos(-angle_rad)
@@ -167,9 +174,6 @@ def move_player(player_car, action_index):
         player_car.rotate(left=True)
     elif action_index == 2:  # Steer right
         player_car.rotate(right=True)
-    elif action_index == 3:  # Move backward (if applicable)
-        moved = True
-        player_car.move_backward()
 
     # If no movement (i.e., action did not move forward or backward), reduce speed
     if not moved:
@@ -186,15 +190,15 @@ def handle_finish_line_collision(player_car):
 
 
 def get_car_input(car):
-    car_input = []
-    for direction in ('FORWARD', 'LEFT', 'RIGHT', 'LIGHT_LEFT', 'LIGHT_RIGHT'):
+    car_input = [car.get_velocity()]
+    for direction in ('FORWARD', 'LEFT', 'RIGHT', 'LIGHT_LEFT', 'LIGHT_RIGHT', "LIGHT_LEFT2", "LIGHT_RIGHT2"):
         distance_to_border, collision_point = car.point_to_mask_distance(TRACK_BORDER_MASK, direction)
         car_input.append(distance_to_border)
-    return np.array(car_input) / 1000  # Normalize the inputs
+    return np.array(car_input)  # Normalize the inputs
 
 
 def draw_input(car):
-    for direction in ('FORWARD', 'LEFT', 'RIGHT', 'LIGHT_LEFT', 'LIGHT_RIGHT'):
+    for direction in ('FORWARD', 'LEFT', 'RIGHT', 'LIGHT_LEFT', 'LIGHT_RIGHT', "LIGHT_LEFT2", "LIGHT_RIGHT2"):
         distance_to_border, collision_point = car.point_to_mask_distance(TRACK_BORDER_MASK, direction)
         pygame.draw.line(WIN, (255, 0, 0), car.get_img_pos(), collision_point, 2)
         pygame.draw.circle(WIN, (0, 0, 255), collision_point, 3)
@@ -211,7 +215,8 @@ def compute_progress(car):
 
 def eval_genomes(genomes, config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    counter = 0
+    limit = FPS * 20
     # cars handling
     checkpoints = [0.1, 0.2, 0.4, 0.6, 0.8]
     cars = []
@@ -232,6 +237,10 @@ def eval_genomes(genomes, config):
     run = True
 
     while run:
+        counter += 1
+        if counter > limit:
+            run = False
+
         WIN.fill((0, 0, 0))
         draw(WIN, TRACK, TILE, FINISH)  # Draw background and track
 
@@ -270,7 +279,7 @@ def eval_genomes(genomes, config):
                 else:
                     car_info['stagnation_counter'] += 1
                     if car_info['stagnation_counter'] > 30:
-                        car_info['fitness'] *= 0.5
+                        car_info['fitness'] *= 0.9
                         car_info['stagnation_counter'] = 0
 
                 car_info['last_progress'] = current_progress
@@ -280,6 +289,7 @@ def eval_genomes(genomes, config):
         # Check for end of generation if all cars have crashed
         if all_crashed:
             run = False
+
 
 
 
