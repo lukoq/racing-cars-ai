@@ -4,7 +4,7 @@ import time
 import math
 from utils import *
 import neat
-import torch
+from network import *
 
 
 pygame.font.init()
@@ -21,6 +21,8 @@ FINISH_POSITION = (80, 250)
 
 RED_CAR = scale_image(pygame.image.load("imgs/red-car.png"), 0.6)
 GREEN_CAR = scale_image(pygame.image.load("imgs/green-car.png"), 0.6)
+
+
 
 WIDTH, HEIGHT = 1100, 600
 X_CENTER, Y_CENTER = WIDTH / 2, HEIGHT / 2
@@ -218,7 +220,7 @@ def eval_genomes(genomes, config):
     counter = 0
     limit = FPS * 20
     # cars handling
-    checkpoints = [0.1, 0.2, 0.4, 0.6, 0.8]
+    checkpoints = [0.05, 0.1, 0.15, 0.2, 0.3]
     cars = []
     for _, genome in genomes:
         net = neat.nn.FeedForwardNetwork.create(genome, config)
@@ -265,22 +267,19 @@ def eval_genomes(genomes, config):
                     all_crashed = False
 
                 current_progress = compute_progress(car)
+                print(car_info['fitness'])
                 if current_progress > car_info['last_progress']:  # forward
                     car_info['fitness'] += (current_progress - car_info['last_progress']) * 5
                     car_info['stagnation_counter'] = 0
                     for checkpoint in checkpoints:
                         if current_progress >= checkpoint and checkpoint not in car_info['checkpoints_passed']:
-                            car_info['fitness'] += 1  # bonus
+                            car_info['fitness'] += 10  # bonus
                             car_info['checkpoints_passed'].append(checkpoint)
 
                 elif current_progress < car_info['last_progress']:  # backward
                     car_info['fitness'] -= (car_info['last_progress'] - current_progress) * 0.5
                     car_info['fitness'] = max(car_info['fitness'], 0)
-                else:
-                    car_info['stagnation_counter'] += 1
-                    if car_info['stagnation_counter'] > 30:
-                        car_info['fitness'] *= 0.9
-                        car_info['stagnation_counter'] = 0
+
 
                 car_info['last_progress'] = current_progress
             car.draw(WIN)
@@ -307,7 +306,7 @@ def eval_genomes(genomes, config):
     # Assign fitness to each genome after the generation ends
     for i, (genome_id, genome) in enumerate(genomes):
         genome.fitness = cars[i]['fitness']
-
+        print(genome.fitness)
 
 def run_neat(config_path):
     # Correct the typo by using 'neat.Config' with a capital 'C'
